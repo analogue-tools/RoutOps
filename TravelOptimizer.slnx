@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TravelOptimizer.Api/TravelOptimizer.Api.csproj" />
+    <Project Path="src/TravelOptimizer.Domain/TravelOptimizer.Domain.csproj" />
+    <Project Path="src/TravelOptimizer.Persistence/TravelOptimizer.Persistence.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,13 @@
+bin/
+obj/
+/packages/
+riderModule.iml
+/_ReSharper.Caches/
+.idea/
+.vs/
+
+# App configuration with secrets — never commit
+appsettings.json
+appsettings.Development.json
+appsettings.*.json
+!appsettings.example.json
