@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RouteOps — demo (no install needed)</title>
+  <!--
+    STANDALONE DEMO. No dependencies, no backend, no build. Just open this file in any browser.
+    Shows the RouteOps day-routing UX with representative data. The "Open in Maps" links are real.
+    The live version (driven by the .NET engine + live TfL) is served at / from the API — see QUICKSTART.md.
+  -->
+  <style>
+    :root {
+      --bg:#0b0e14; --panel:#131822; --panel2:#1b2230; --line:#273042; --text:#e6eaf2;
+      --muted:#8b97ad; --accent:#5b8cff; --good:#3fbf7f; --warn:#f0b429; --bad:#ef5b5b; --radius:14px;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:radial-gradient(1200px 600px at 70% -10%, #16203a 0%, var(--bg) 55%);
+      color:var(--text); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; min-height:100vh; }
+    .wrap { max-width:760px; margin:0 auto; padding:32px 20px 64px; }
+    header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+    h1 { font-size:26px; margin:0; letter-spacing:-0.02em; }
+    .dot { color:var(--accent); }
+    .tag { color:var(--muted); font-size:14px; }
+    .banner { margin:16px 0; padding:10px 14px; border-radius:10px; background:var(--panel2);
+      border:1px solid var(--line); color:var(--muted); font-size:13px; }
+    .banner b { color:var(--text); }
+    .controls { display:flex; gap:10px; align-items:center; margin:14px 0; flex-wrap:wrap; }
+    input[type=date] { background:var(--panel2); border:1px solid var(--line); color:var(--text);
+      padding:8px 10px; border-radius:10px; font:inherit; }
+    button { background:var(--accent); color:#fff; border:0; padding:9px 14px; border-radius:10px; font:inherit; font-weight:600; cursor:pointer; }
+    button:active { transform:translateY(1px); }
+    .summary { color:var(--muted); font-size:14px; margin:2px 0 18px; }
+    .summary b { color:var(--text); }
+    .leg { background:linear-gradient(180deg, var(--panel) 0%, #10151f 100%); border:1px solid var(--line);
+      border-radius:var(--radius); padding:16px 18px; margin-bottom:14px; }
+    .route { display:flex; align-items:center; gap:10px; font-size:17px; font-weight:600; flex-wrap:wrap; }
+    .arrow { color:var(--muted); }
+    .row { display:flex; gap:18px; flex-wrap:wrap; margin-top:10px; color:var(--muted); font-size:14px; }
+    .row .k { color:var(--muted); } .row .v { color:var(--text); font-weight:600; }
+    .leaveby .v { color:var(--good); }
+    .badge { display:inline-block; padding:3px 9px; border-radius:999px; font-size:12px; font-weight:700;
+      text-transform:uppercase; letter-spacing:0.03em; background:var(--panel2); border:1px solid var(--line); }
+    .badge.tube{color:#ff6f6f;} .badge.bus{color:#6fd3ff;} .badge.rail{color:#b08bff;} .badge.walk{color:var(--good);} .badge.cycle{color:var(--warn);}
+    .rationale { margin-top:10px; color:var(--muted); font-size:13px; }
+    .actions { margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; }
+    a.maps { text-decoration:none; background:var(--panel2); border:1px solid var(--line); color:var(--text);
+      padding:8px 12px; border-radius:10px; font-weight:600; font-size:14px; }
+    a.maps:hover { border-color:var(--accent); }
+    .foot { margin-top:26px; color:var(--muted); font-size:12px; line-height:1.6; }
+    .pulse { width:8px; height:8px; border-radius:50%; background:var(--good); display:inline-block;
+      box-shadow:0 0 0 0 rgba(63,191,127,.7); animation:p 2s infinite; }
+    @keyframes p { 0%{box-shadow:0 0 0 0 rgba(63,191,127,.6)} 70%{box-shadow:0 0 0 8px rgba(63,191,127,0)} 100%{box-shadow:0 0 0 0 rgba(63,191,127,0)} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Route<span class="dot">Ops</span></h1>
+      <span class="tag">autonomous day routing · <span class="pulse"></span> agents running</span>
+    </header>
+    <div class="tag">Reads your calendar → live TfL vs a learned baseline → tells you when to leave, and why.</div>
+
+    <div class="banner">📺 <b>Standalone demo</b> — representative data, no backend needed. The live version
+      is driven by the .NET engine + live TfL (see <b>QUICKSTART.md</b>). "Open in Maps" links are real.</div>
+
+    <div class="controls">
+      <input type="date" id="date" />
+      <button id="refresh">Refresh</button>
+    </div>
+
+    <div class="summary" id="summary"></div>
+    <div id="legs"></div>
+
+    <div class="foot">
+      Four London meetings today → three legs. Modes chosen as the live engine would (fastest that arrives
+      on time); "leave by" is the latest safe departure with buffer; rationale shows the baseline-vs-today logic.
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    // Standalone demo formats in the browser's local time so "Leave by 10:28" reads correctly anywhere.
+    const fmt = (iso) => iso ? new Date(iso).toLocaleTimeString("en-GB", { hour:"2-digit", minute:"2-digit" }) : "—";
+    const todayISO = () => new Date().toLocaleDateString("en-CA");
+
+    function buildDemo() {
+      const t = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.toISOString(); };
+      const link = (o, d) => `https://www.google.com/maps/dir/?api=1&origin=${o}&destination=${d}&travelmode=transit`;
+      return {
+        userId: 1, date: todayISO(), totalPredictedWastedMin: 28,
+        legs: [
+          { legId:1, fromLabel:"King's Cross", toLabel:"Canary Wharf", arriveBy:t(11,0),
+            mapsUrl: link("51.5308,-0.1238","51.5054,-0.0235"),
+            decision:{ chosenMode:"tube", recommendedDeparture:t(10,28), predictedArrival:t(10,54),
+              rationale:"Tube fastest (Victoria → Jubilee). Live TfL: good service. Baseline 26 min + 6 min buffer." } },
+          { legId:2, fromLabel:"Canary Wharf", toLabel:"Soho Square", arriveBy:t(14,0),
+            mapsUrl: link("51.5054,-0.0235","51.5152,-0.1322"),
+            decision:{ chosenMode:"tube", recommendedDeparture:t(13,22), predictedArrival:t(13,55),
+              rationale:"Jubilee → Central. Minor delays reported — baseline 30 min, today ~33, buffer increased." } },
+          { legId:3, fromLabel:"Soho Square", toLabel:"Liverpool Street", arriveBy:t(16,30),
+            mapsUrl: link("51.5152,-0.1322","51.5178,-0.0823"),
+            decision:{ chosenMode:"tube", recommendedDeparture:t(16,3), predictedArrival:t(16,24),
+              rationale:"Central line direct. Normal for this corridor & time of day — minimum buffer applied." } },
+        ],
+      };
+    }
+
+    function render(it) {
+      const legs = it.legs || [];
+      $("summary").innerHTML = `<b>${legs.length}</b> legs · day's predicted wasted time <b>${it.totalPredictedWastedMin} min</b>`;
+      $("legs").innerHTML = legs.map(legCard).join("");
+    }
+
+    function legCard(l) {
+      const d = l.decision, mode = d ? d.chosenMode : "—";
+      const maps = l.mapsUrl ? `<a class="maps" href="${l.mapsUrl}" target="_blank" rel="noopener">↗ Open route in Maps</a>` : "";
+      const rationale = d?.rationale ? `<div class="rationale">${esc(d.rationale)}</div>` : "";
+      return `
+        <div class="leg">
+          <div class="route">
+            <span>${esc(l.fromLabel)}</span><span class="arrow">→</span><span>${esc(l.toLabel)}</span>
+            <span class="badge ${mode}">${mode}</span>
+          </div>
+          <div class="row">
+            <span class="leaveby"><span class="k">Leave by</span> <span class="v">${fmt(d?.recommendedDeparture)}</span></span>
+            <span><span class="k">Arrive ~</span> <span class="v">${fmt(d?.predictedArrival)}</span></span>
+            <span><span class="k">Must arrive by</span> <span class="v">${fmt(l.arriveBy)}</span></span>
+          </div>
+          ${rationale}
+          <div class="actions">${maps}</div>
+        </div>`;
+    }
+
+    const esc = (s) => (s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
+
+    $("date").value = todayISO();
+    $("refresh").onclick = () => render(buildDemo());
+    render(buildDemo());
+  </script>
+</body>
+</html>
