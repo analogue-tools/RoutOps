@@ -30,7 +30,7 @@ public class GetItineraryHandler(AppDbContext db) : IRequestHandler<GetItinerary
 
         var legs = await db.TravelLegs
             .Where(l => l.UserId == request.UserId && l.ArriveBy >= fromUtc && l.ArriveBy < toUtc)
-            .Include(l => l.Predictions)
+            .Include(l => l.Predictions).ThenInclude(p => p.Segments)
             .Include(l => l.Decision)
             .OrderBy(l => l.ArriveBy)
             .ToListAsync(cancellationToken);

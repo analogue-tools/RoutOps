@@ -13,11 +13,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     public DbSet<TravelLeg> TravelLegs => Set<TravelLeg>();
     public DbSet<TravelPrediction> TravelPredictions => Set<TravelPrediction>();
+    public DbSet<PredictionSegment> PredictionSegments => Set<PredictionSegment>();
     public DbSet<TravelDecision> TravelDecisions => Set<TravelDecision>();
     public DbSet<LegOutcome> LegOutcomes => Set<LegOutcome>();
     public DbSet<CorridorModel> CorridorModels => Set<CorridorModel>();
+    public DbSet<CorridorSample> CorridorSamples => Set<CorridorSample>();
     public DbSet<PolicyWeight> PolicyWeights => Set<PolicyWeight>();
     public DbSet<ProposedAdjustment> ProposedAdjustments => Set<ProposedAdjustment>();
+    public DbSet<SourceHealth> SourceHealth => Set<SourceHealth>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

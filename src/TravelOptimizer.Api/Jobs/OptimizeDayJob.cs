@@ -13,11 +13,13 @@ namespace TravelOptimizer.Api.Jobs;
 public class OptimizeDayJob(
     AppDbContext db,
     IItineraryOptimizer optimizer,
+    JobRunRegistry registry,
     ILogger<OptimizeDayJob> logger) : IInvocable
 {
     public async Task Invoke()
     {
         var users = await db.Users.ToListAsync();
+        int failures = 0;
         foreach (var user in users)
         {
             var today = JobTime.LocalToday(user);
@@ -29,9 +31,12 @@ public class OptimizeDayJob(
                 }
                 catch (Exception ex)
                 {
+                    failures++;
                     logger.LogError(ex, "OptimizeDayJob failed for user {User} on {Date}", user.Id, date);
                 }
             }
         }
+
+        registry.Record(nameof(OptimizeDayJob), failures == 0, failures == 0 ? null : $"{failures} failure(s)");
     }
 }

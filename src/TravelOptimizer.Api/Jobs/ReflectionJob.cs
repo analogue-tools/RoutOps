@@ -9,14 +9,18 @@ namespace TravelOptimizer.Api.Jobs;
 /// Hourly; fires at the user's local 2 AM (Layer 3). Runs the LLM reflection → shadow-eval → gate.
 /// Low-risk proposals that clear the backtest auto-promote; the rest land in the approval queue.
 /// </summary>
-public class ReflectionJob(AppDbContext db, IReflectionService reflection, ILogger<ReflectionJob> logger)
-    : IInvocable
+public class ReflectionJob(
+    AppDbContext db,
+    IReflectionService reflection,
+    JobRunRegistry registry,
+    ILogger<ReflectionJob> logger) : IInvocable
 {
     private const int FireLocalHour = 2;
 
     public async Task Invoke()
     {
         var users = await db.Users.ToListAsync();
+        int failures = 0;
         foreach (var user in users)
         {
             if (JobTime.LocalHour(user) != FireLocalHour) continue;
@@ -29,8 +33,11 @@ public class ReflectionJob(AppDbContext db, IReflectionService reflection, ILogg
             }
             catch (Exception ex)
             {
+                failures++;
                 logger.LogError(ex, "ReflectionJob failed for user {User}", user.Id);
             }
         }
+
+        registry.Record(nameof(ReflectionJob), failures == 0, failures == 0 ? null : $"{failures} failure(s)");
     }
 }

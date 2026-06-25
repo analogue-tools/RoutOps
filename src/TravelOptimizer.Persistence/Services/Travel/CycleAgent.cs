@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Logging;
 using TravelOptimizer.Domain.DataHelpers;
+using TravelOptimizer.Domain.Interfaces.Travel;
 
 namespace TravelOptimizer.Persistence.Services.Travel;
 
-public class CycleAgent(HttpClient http, ILogger<CycleAgent> logger) : SourceAgentBase(http, logger)
+public class CycleAgent(HttpClient http, ILogger<CycleAgent> logger, ISourceHealthState health)
+    : SourceAgentBase(http, logger, health)
 {
     public override string Mode => TravelMode.Cycle;
     protected override string TflMode => "cycle";

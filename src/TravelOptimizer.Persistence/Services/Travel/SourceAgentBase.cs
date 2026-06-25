@@ -11,9 +11,10 @@ namespace TravelOptimizer.Persistence.Services.Travel;
 /// Shared TfL Journey Planner plumbing for the source agents. Each concrete agent supplies its
 /// mode parameters; the base issues the call and, on any failure (no key / network / no route),
 /// degrades to a deterministic distance-based heuristic so the optimizer always has an estimate.
-/// All values returned here are RAW — calibration (Layer 1) is applied downstream.
+/// All values returned here are RAW — calibration (Layer 1) is applied downstream. Every call also
+/// feeds the self-healing layer: a usable live estimate records success, a fallback records failure.
 /// </summary>
-public abstract class SourceAgentBase(HttpClient http, ILogger logger) : ISourceAgent
+public abstract class SourceAgentBase(HttpClient http, ILogger logger, ISourceHealthState health) : ISourceAgent
 {
     public abstract string Mode { get; }
 
@@ -32,27 +33,36 @@ public abstract class SourceAgentBase(HttpClient http, ILogger logger) : ISource
     /// <summary>Hard reach limit for the mode in km (beyond this the option is infeasible).</summary>
     protected abstract double MaxRangeKm { get; }
 
+    protected HttpClient Http => http;
+    protected ILogger Logger => logger;
+
     public async Task<TravelPrediction> EstimateAsync(TravelLeg leg, CancellationToken ct)
     {
         try
         {
             var fromTfl = await QueryTflAsync(leg, ct);
-            if (fromTfl is not null) return fromTfl;
+            if (fromTfl is not null)
+            {
+                health.RecordSuccess(Mode);
+                return fromTfl;
+            }
         }
         catch (Exception ex)
         {
             logger.LogDebug(ex, "TfL query failed for {Mode}; using heuristic fallback", Mode);
         }
 
+        health.RecordFailure(Mode);
         return Fallback(leg);
     }
 
-    private async Task<TravelPrediction?> QueryTflAsync(TravelLeg leg, CancellationToken ct)
+    protected static string FormatCoord(double lat, double lng) =>
+        $"{lat.ToString(CultureInfo.InvariantCulture)},{lng.ToString(CultureInfo.InvariantCulture)}";
+
+    protected virtual async Task<TravelPrediction?> QueryTflAsync(TravelLeg leg, CancellationToken ct)
     {
         // TfL unified API: /Journey/JourneyResults/{lat,lng}/to/{lat,lng}?mode=...
-        var from = $"{leg.FromLat.ToString(CultureInfo.InvariantCulture)},{leg.FromLng.ToString(CultureInfo.InvariantCulture)}";
-        var to = $"{leg.ToLat.ToString(CultureInfo.InvariantCulture)},{leg.ToLng.ToString(CultureInfo.InvariantCulture)}";
-        var url = $"Journey/JourneyResults/{from}/to/{to}?mode={TflMode}";
+        var url = $"Journey/JourneyResults/{FormatCoord(leg.FromLat, leg.FromLng)}/to/{FormatCoord(leg.ToLat, leg.ToLng)}?mode={TflMode}";
 
         using var resp = await http.GetAsync(url, ct);
         if (!resp.IsSuccessStatusCode) return null;
@@ -90,14 +100,14 @@ public abstract class SourceAgentBase(HttpClient http, ILogger logger) : ISource
         };
     }
 
-    private static string ExtractDisruptions(JsonElement root)
+    protected static string ExtractDisruptions(JsonElement root)
     {
         if (root.TryGetProperty("lineStatuses", out var ls) && ls.ValueKind == JsonValueKind.Array && ls.GetArrayLength() > 0)
             return ls.GetRawText();
         return string.Empty;
     }
 
-    private TravelPrediction Fallback(TravelLeg leg)
+    protected virtual TravelPrediction Fallback(TravelLeg leg)
     {
         double km = GeoMath.HaversineKm(leg.FromLat, leg.FromLng, leg.ToLat, leg.ToLng);
         // street/route factor: straight-line underestimates real travel, scale up ~1.3x

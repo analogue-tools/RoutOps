@@ -30,6 +30,7 @@ public static class RegistrationExtensions
         services.Configure<ReflectionOptions>(config.GetSection("Travel:Reflection"));
         services.Configure<AiOptions>(config.GetSection("Travel:OpenAI"));
         services.Configure<GoogleOptions>(config.GetSection("Travel:Google"));
+        services.Configure<SourceHealthOptions>(config.GetSection("Travel:SourceHealth"));
 
         // core Travel services (interface in Domain, impl in Persistence — SERVICES.md)
         services.AddScoped<ICalibrationService, CalibrationService>();
@@ -40,12 +41,20 @@ public static class RegistrationExtensions
         services.AddScoped<IAdjustmentPromoter, AdjustmentPromoter>();
         services.AddScoped<IGoogleCalendarService, GoogleCalendarService>();
 
+        // self-healing source health: in-memory live state (singleton) + durable companion (scoped)
+        services.AddSingleton<ISourceHealthState, SourceHealthState>();
+        services.AddScoped<ISourceHealthService, SourceHealthService>();
+
+        // optional TfL app-key authenticator (no-op when unconfigured)
+        services.AddTransient<TflAppKeyHandler>();
+
         // source agents — one typed HttpClient each (TfL), exposed via ISourceAgent (spec §5)
         AddTflAgent<TubeAgent>(services);
         AddTflAgent<BusAgent>(services);
         AddTflAgent<RailAgent>(services);
         AddTflAgent<CycleAgent>(services);
         AddTflAgent<WalkAgent>(services);
+        AddTflAgent<MultiModalAgent>(services); // composite mixed-mode option
 
         // AI completion, mirroring AddHttpClient<OpenAIService> (REGISTRATION.md)
         var aiBase = config["Travel:OpenAI:BaseUrl"] ?? "https://api.openai.com/v1/";
@@ -58,18 +67,22 @@ public static class RegistrationExtensions
 
         // Coravel jobs (JOBS.md)
         services.AddScheduler();
+        services.AddSingleton<JobRunRegistry>();
         services.AddTransient<OptimizeDayJob>();
         services.AddTransient<CalibrationJob>();
         services.AddTransient<ReflectionJob>();
         services.AddTransient<CalendarSyncJob>();
         services.AddTransient<MonitorJob>();
+        services.AddTransient<ProbeJob>();
+        services.AddTransient<HealthJob>();
 
         return services;
     }
 
     private static void AddTflAgent<TAgent>(IServiceCollection services) where TAgent : class, ISourceAgent
     {
-        services.AddHttpClient<TAgent>(c => c.BaseAddress = new Uri("https://api.tfl.gov.uk/"));
+        services.AddHttpClient<TAgent>(c => c.BaseAddress = new Uri("https://api.tfl.gov.uk/"))
+            .AddHttpMessageHandler<TflAppKeyHandler>();
         services.AddTransient<ISourceAgent>(sp => sp.GetRequiredService<TAgent>());
     }
 }

@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Logging;
 using TravelOptimizer.Domain.DataHelpers;
+using TravelOptimizer.Domain.Interfaces.Travel;
 
 namespace TravelOptimizer.Persistence.Services.Travel;
 
-public class BusAgent(HttpClient http, ILogger<BusAgent> logger) : SourceAgentBase(http, logger)
+public class BusAgent(HttpClient http, ILogger<BusAgent> logger, ISourceHealthState health)
+    : SourceAgentBase(http, logger, health)
 {
     public override string Mode => TravelMode.Bus;
     protected override string TflMode => "bus";

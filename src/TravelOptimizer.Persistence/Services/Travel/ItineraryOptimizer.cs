@@ -19,9 +19,11 @@ public class ItineraryOptimizer(
     ICalibrationService calibration,
     IPolicyService policy,
     IGeocodingService geocoding,
+    ISourceHealthState health,
     ILogger<ItineraryOptimizer> logger) : IItineraryOptimizer
 {
     private readonly List<ISourceAgent> _agents = agents.ToList();
+    private const double DegradedConfidenceFactor = 0.6;
 
     public async Task<Itinerary> OptimizeDayAsync(int userId, DateOnly date, CancellationToken ct)
     {
@@ -40,7 +42,7 @@ public class ItineraryOptimizer(
         // kick) don't duplicate. Legs are keyed by their event window (NotBefore, ArriveBy).
         var existingLegs = await db.TravelLegs
             .Where(l => l.UserId == userId && l.ArriveBy >= fromUtc && l.ArriveBy < toUtc)
-            .Include(l => l.Predictions)
+            .Include(l => l.Predictions).ThenInclude(p => p.Segments)
             .Include(l => l.Decision!).ThenInclude(d => d.Outcome)
             .ToListAsync(ct);
 
@@ -238,17 +240,35 @@ public class ItineraryOptimizer(
         return new ReoptimizeResult(legId, true, prevMode, fresh.ChosenMode, prevDeparture, fresh.RecommendedDeparture, note);
     }
 
-    /// <summary>Fan out to all agents in parallel (raw), then calibrate each (Layer 1). DbContext writes stay sequential.</summary>
+    /// <summary>
+    /// Fan out to the healthy/degraded agents in parallel (raw), then calibrate each (Layer 1).
+    /// Self-healing: disabled sources are skipped (bar a recovery probe once their cooldown expires)
+    /// and degraded sources have their confidence down-weighted so the policy trusts them less.
+    /// DbContext writes stay sequential.
+    /// </summary>
     private async Task<TravelPrediction[]> EstimateAndCalibrateAsync(TravelLeg leg, CancellationToken ct)
     {
-        var raws = await Task.WhenAll(_agents.Select(a => a.EstimateAsync(leg, ct)));
+        var runnable = _agents.Where(a => ShouldConsult(a.Mode)).ToList();
+        if (runnable.Count == 0) runnable = _agents; // never leave the policy with nothing to choose
+
+        var raws = await Task.WhenAll(runnable.Select(a => a.EstimateAsync(leg, ct)));
         foreach (var raw in raws)
         {
             await calibration.CalibrateAsync(raw, leg);
             raw.TravelLegId = leg.Id;
+
+            if (health.GetState(raw.Mode) == SourceHealthStatus.Degraded)
+                raw.Confidence *= DegradedConfidenceFactor;
         }
 
         return raws;
+    }
+
+    /// <summary>Skip disabled sources, but let one through once the cooldown has elapsed (recovery probe).</summary>
+    private bool ShouldConsult(string mode)
+    {
+        if (!health.IsDisabled(mode, out var until)) return true;
+        return until is null || until <= DateTime.UtcNow;
     }
 
     private async Task<(double lat, double lng)?> ResolveCoordsAsync(CalendarEvent e, CancellationToken ct)

@@ -16,5 +16,8 @@ public class TravelPrediction
     public string Disruptions { get; set; } = string.Empty; // json
     public string Rationale { get; set; } = string.Empty;
 
+    /// <summary>Ordered legs of a composite (mixed-mode) journey; empty for single-mode predictions.</summary>
+    public ICollection<PredictionSegment> Segments { get; set; } = new List<PredictionSegment>();
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

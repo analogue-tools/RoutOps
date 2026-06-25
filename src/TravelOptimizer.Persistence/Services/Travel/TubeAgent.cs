@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Logging;
 using TravelOptimizer.Domain.DataHelpers;
+using TravelOptimizer.Domain.Interfaces.Travel;
 
 namespace TravelOptimizer.Persistence.Services.Travel;
 
-public class TubeAgent(HttpClient http, ILogger<TubeAgent> logger) : SourceAgentBase(http, logger)
+public class TubeAgent(HttpClient http, ILogger<TubeAgent> logger, ISourceHealthState health)
+    : SourceAgentBase(http, logger, health)
 {
     public override string Mode => TravelMode.Tube;
     protected override string TflMode => "tube";

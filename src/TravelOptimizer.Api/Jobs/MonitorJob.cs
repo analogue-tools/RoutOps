@@ -10,7 +10,11 @@ namespace TravelOptimizer.Api.Jobs;
 /// whose departure is coming up (and not yet travelled) and updates the decision when a disruption
 /// shifts the best mode/departure (spec §1: react to a re-routed bus / suspended line).
 /// </summary>
-public class MonitorJob(AppDbContext db, IItineraryOptimizer optimizer, ILogger<MonitorJob> logger) : IInvocable
+public class MonitorJob(
+    AppDbContext db,
+    IItineraryOptimizer optimizer,
+    JobRunRegistry registry,
+    ILogger<MonitorJob> logger) : IInvocable
 {
     private const int LookaheadHours = 3;
 
@@ -26,7 +30,11 @@ public class MonitorJob(AppDbContext db, IItineraryOptimizer optimizer, ILogger<
             .Select(d => d.TravelLegId)
             .ToListAsync();
 
-        if (legIds.Count == 0) return;
+        if (legIds.Count == 0)
+        {
+            registry.Record(nameof(MonitorJob), true, "0 upcoming");
+            return;
+        }
 
         int changed = 0;
         foreach (var legId in legIds)
@@ -43,5 +51,6 @@ public class MonitorJob(AppDbContext db, IItineraryOptimizer optimizer, ILogger<
         }
 
         logger.LogInformation("MonitorJob checked {Count} upcoming leg(s); {Changed} plan(s) updated", legIds.Count, changed);
+        registry.Record(nameof(MonitorJob), true, $"{legIds.Count} checked, {changed} updated");
     }
 }

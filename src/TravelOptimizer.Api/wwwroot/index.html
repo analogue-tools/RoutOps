@@ -3,164 +3,116 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RouteOps — autonomous day routing</title>
-  <style>
-    :root {
-      --bg: #0b0e14; --panel: #131822; --panel2: #1b2230; --line: #273042;
-      --text: #e6eaf2; --muted: #8b97ad; --accent: #5b8cff; --good: #3fbf7f;
-      --warn: #f0b429; --bad: #ef5b5b; --radius: 14px;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; background: radial-gradient(1200px 600px at 70% -10%, #16203a 0%, var(--bg) 55%);
-      color: var(--text); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      min-height: 100vh;
-    }
-    .wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
-    header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
-    h1 { font-size: 26px; margin: 0; letter-spacing: -0.02em; }
-    .dot { color: var(--accent); }
-    .tag { color: var(--muted); font-size: 14px; }
-    .controls { display: flex; gap: 10px; align-items: center; margin: 20px 0 14px; flex-wrap: wrap; }
-    input[type=date] {
-      background: var(--panel2); border: 1px solid var(--line); color: var(--text);
-      padding: 8px 10px; border-radius: 10px; font: inherit;
-    }
-    button {
-      background: var(--accent); color: #fff; border: 0; padding: 9px 14px; border-radius: 10px;
-      font: inherit; font-weight: 600; cursor: pointer;
-    }
-    button.ghost { background: var(--panel2); border: 1px solid var(--line); color: var(--text); font-weight: 500; }
-    button:active { transform: translateY(1px); }
-    .summary { color: var(--muted); font-size: 14px; margin: 2px 0 18px; }
-    .summary b { color: var(--text); }
-    .leg {
-      background: linear-gradient(180deg, var(--panel) 0%, #10151f 100%);
-      border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 14px;
-    }
-    .route { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 600; }
-    .arrow { color: var(--muted); }
-    .row { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; color: var(--muted); font-size: 14px; }
-    .row .k { color: var(--muted); } .row .v { color: var(--text); font-weight: 600; }
-    .leaveby .v { color: var(--good); }
-    .badge {
-      display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.03em; background: var(--panel2); border: 1px solid var(--line);
-    }
-    .badge.tube { color: #ff6f6f; } .badge.bus { color: #6fd3ff; } .badge.rail { color: #b08bff; }
-    .badge.walk { color: var(--good); } .badge.cycle { color: var(--warn); }
-    .rationale { margin-top: 10px; color: var(--muted); font-size: 13px; }
-    .actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
-    a.maps {
-      text-decoration: none; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
-      padding: 8px 12px; border-radius: 10px; font-weight: 600; font-size: 14px;
-    }
-    a.maps:hover { border-color: var(--accent); }
-    .empty, .err { background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius);
-      padding: 24px; color: var(--muted); text-align: center; }
-    .err { color: var(--bad); border-color: #5a2730; }
-    .foot { margin-top: 26px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-    .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--good); display: inline-block;
-      box-shadow: 0 0 0 0 rgba(63,191,127,0.7); animation: p 2s infinite; }
-    @keyframes p { 0%{box-shadow:0 0 0 0 rgba(63,191,127,.6)} 70%{box-shadow:0 0 0 8px rgba(63,191,127,0)} 100%{box-shadow:0 0 0 0 rgba(63,191,127,0)} }
-  </style>
+  <title>RouteOps — Travel Optimizer</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>" />
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>Route<span class="dot">Ops</span></h1>
-      <span class="tag">autonomous day routing · <span class="pulse"></span> agents running</span>
-    </header>
-    <div class="tag">Reads your calendar → live TfL vs a learned baseline → tells you when to leave, and why.</div>
-
-    <div class="controls">
-      <input type="date" id="date" />
-      <button id="refresh">Refresh</button>
-      <button class="ghost" id="optimize">Re-optimise now</button>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="16 8 10 10 8 16 14 14 16 8" fill="currentColor" stroke="none"/></svg>
+      </span>
+      <div>
+        <h1>RouteOps</h1>
+        <p class="tagline">Self-optimizing travel planner</p>
+      </div>
     </div>
-
-    <div class="summary" id="summary"></div>
-    <div id="legs"></div>
-
-    <div class="foot">
-      Demo data: four seeded London meetings. Modes from live TfL; "leave by" is the latest safe
-      departure with buffer. Each route opens in Google Maps (no API key used).
+    <div class="topbar-right">
+      <label class="date-field">
+        <span>Day</span>
+        <input type="date" id="datePicker" />
+      </label>
+      <button id="refreshBtn" class="btn ghost" title="Refresh now">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Refresh
+      </button>
+      <span id="autoDot" class="auto-dot" title="Auto-refresh every 30s"></span>
     </div>
-  </div>
+  </header>
 
-  <script>
-    const USER = "1"; // dev single-user (X-User-Id)
-    const $ = (id) => document.getElementById(id);
-    const fmt = (iso) => iso ? new Date(iso).toLocaleTimeString("en-GB",
-      { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : "—";
-    const todayISO = () => new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+  <main class="grid">
+    <!-- Headline KPIs -->
+    <section class="kpis" id="kpis">
+      <div class="kpi skeleton"></div>
+      <div class="kpi skeleton"></div>
+      <div class="kpi skeleton"></div>
+      <div class="kpi skeleton"></div>
+    </section>
 
-    async function load() {
-      const date = $("date").value || todayISO();
-      $("legs").innerHTML = "";
-      $("summary").textContent = "Loading…";
-      try {
-        const res = await fetch(`/api/itineraries/${date}`, { headers: { "X-User-Id": USER } });
-        if (!res.ok) throw new Error(`API ${res.status}`);
-        const it = await res.json();
-        render(it);
-      } catch (e) {
-        $("summary").textContent = "";
-        $("legs").innerHTML = `<div class="err">Couldn't load itinerary: ${e.message}.<br>Is the API running and the DB seeded?</div>`;
-      }
-    }
+    <!-- Route map -->
+    <section class="card span-2" id="mapCard">
+      <div class="card-head">
+        <h2>Route map</h2>
+        <span class="card-sub" id="mapSub">—</span>
+      </div>
+      <div class="card-body map-body">
+        <div id="routeMap" class="route-map" aria-label="Interactive route map"></div>
+        <div class="map-legend" id="mapLegend"></div>
+      </div>
+    </section>
 
-    function render(it) {
-      const legs = it.legs || [];
-      $("summary").innerHTML = legs.length
-        ? `<b>${legs.length}</b> legs · day's predicted wasted time <b>${it.totalPredictedWastedMin} min</b>`
-        : "";
-      if (!legs.length) {
-        $("legs").innerHTML = `<div class="empty">No legs for this date yet.<br>Give the optimiser a minute, or hit “Re-optimise now”.</div>`;
-        return;
-      }
-      $("legs").innerHTML = legs.map(legCard).join("");
-    }
+    <!-- Route timeline -->
+    <section class="card span-2" id="timelineCard">
+      <div class="card-head">
+        <h2>Route timeline</h2>
+        <span class="card-sub" id="timelineSub">—</span>
+      </div>
+      <div class="card-body" id="timeline">
+        <div class="loading">Loading itinerary…</div>
+      </div>
+    </section>
 
-    function legCard(l) {
-      const d = l.decision;
-      const mode = d ? d.chosenMode : "—";
-      const leaveBy = d ? fmt(d.recommendedDeparture) : "—";
-      const arrive = d ? fmt(d.predictedArrival) : "—";
-      const rationale = d?.rationale ? `<div class="rationale">${escape(d.rationale)}</div>` : "";
-      const maps = l.mapsUrl
-        ? `<a class="maps" href="${l.mapsUrl}" target="_blank" rel="noopener">↗ Open route in Maps</a>` : "";
-      return `
-        <div class="leg">
-          <div class="route">
-            <span>${escape(l.fromLabel)}</span><span class="arrow">→</span><span>${escape(l.toLabel)}</span>
-            <span class="badge ${mode}">${mode}</span>
-          </div>
-          <div class="row">
-            <span class="leaveby"><span class="k">Leave by</span> <span class="v">${leaveBy}</span></span>
-            <span><span class="k">Arrive ~</span> <span class="v">${arrive}</span></span>
-            <span><span class="k">Must arrive by</span> <span class="v">${fmt(l.arriveBy)}</span></span>
-          </div>
-          ${rationale}
-          <div class="actions">${maps}</div>
-        </div>`;
-    }
+    <!-- Source health -->
+    <section class="card" id="sourcesCard">
+      <div class="card-head">
+        <h2>Source health</h2>
+        <span class="card-sub">live self-healing</span>
+      </div>
+      <div class="card-body" id="sources">
+        <div class="loading">Loading…</div>
+      </div>
+    </section>
 
-    const escape = (s) => (s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
+    <!-- Calibration & gathered data -->
+    <section class="card span-2" id="corridorsCard">
+      <div class="card-head">
+        <h2>Calibration &amp; gathered data</h2>
+        <span class="card-sub" id="corridorsSub">corridors learned</span>
+      </div>
+      <div class="card-body corridor-layout">
+        <div class="corridor-list" id="corridorList">
+          <div class="loading">Loading…</div>
+        </div>
+        <div class="corridor-chart">
+          <div class="chart-title" id="chartTitle">Predicted time by hour</div>
+          <canvas id="hourChart"></canvas>
+          <div class="empty hidden" id="chartEmpty">Select a corridor to see its samples.</div>
+        </div>
+      </div>
+    </section>
 
-    async function optimize() {
-      $("optimize").textContent = "Optimising…";
-      try { await fetch(`/api/itineraries/optimize`, {
-        method: "POST", headers: { "Content-Type": "application/json", "X-User-Id": USER },
-        body: JSON.stringify({ date: $("date").value || todayISO() }) }); } catch {}
-      $("optimize").textContent = "Re-optimise now";
-      setTimeout(load, 600);
-    }
+    <!-- Learning queue -->
+    <section class="card" id="learningCard">
+      <div class="card-head">
+        <h2>Learning</h2>
+        <span class="card-sub">reflection queue</span>
+      </div>
+      <div class="card-body" id="learning">
+        <div class="loading">Loading…</div>
+      </div>
+    </section>
+  </main>
 
-    $("date").value = todayISO();
-    $("refresh").onclick = load;
-    $("optimize").onclick = optimize;
-    load();
-  </script>
+  <!-- System health strip -->
+  <footer class="sysbar" id="sysbar">
+    <div class="loading">Loading system health…</div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="app.js"></script>
 </body>
 </html>

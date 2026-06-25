@@ -61,6 +61,16 @@ public static class TravelInitializer
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        b.Entity<PredictionSegment>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TravelPredictionId, x.Order });
+            e.HasOne(x => x.TravelPrediction)
+                .WithMany(p => p.Segments)
+                .HasForeignKey(x => x.TravelPredictionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         b.Entity<TravelDecision>(e =>
         {
             e.HasKey(x => x.Id);
@@ -88,6 +98,20 @@ public static class TravelInitializer
             e.HasKey(x => x.Id);
             // the learning key — unique so each bucket has exactly one model row
             e.HasIndex(x => new { x.Mode, x.CorridorKey, x.DayType, x.HourBucket }).IsUnique();
+        });
+
+        b.Entity<CorridorSample>(e =>
+        {
+            e.HasKey(x => x.Id);
+            // time-series read pattern: latest samples for a corridor/mode
+            e.HasIndex(x => new { x.CorridorKey, x.Mode, x.SampledAt });
+        });
+
+        b.Entity<SourceHealth>(e =>
+        {
+            e.HasKey(x => x.Id);
+            // one row per mode
+            e.HasIndex(x => x.Mode).IsUnique();
         });
 
         b.Entity<PolicyWeight>(e =>

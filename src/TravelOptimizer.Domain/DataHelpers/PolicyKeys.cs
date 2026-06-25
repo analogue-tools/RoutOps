@@ -26,5 +26,8 @@ public static class PolicyKeys
         [RiskWeight] = 15.0,
         [MinBuffer] = 5.0,
         [TargetBuffer] = 10.0,
+        // Composite journeys compete on the same terms by default (no preference penalty); Layer 3
+        // can tune this knob up to nudge the user away from multi-transfer routes, or down to favour them.
+        [PreferencePrefix + TravelMode.Mixed] = 0.0,
     };
 }

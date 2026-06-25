@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Logging;
 using TravelOptimizer.Domain.DataHelpers;
+using TravelOptimizer.Domain.Interfaces.Travel;
 
 namespace TravelOptimizer.Persistence.Services.Travel;
 
-public class WalkAgent(HttpClient http, ILogger<WalkAgent> logger) : SourceAgentBase(http, logger)
+public class WalkAgent(HttpClient http, ILogger<WalkAgent> logger, ISourceHealthState health)
+    : SourceAgentBase(http, logger, health)
 {
     public override string Mode => TravelMode.Walk;
     protected override string TflMode => "walking";
