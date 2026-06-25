@@ -114,8 +114,27 @@ function segmentPopupHtml(seg, legIdx) {
 
 function resolveSegmentEndpoints(leg, segments, idx) {
   const seg = segments[idx];
-  if (segmentHasCoords(seg)) {
-    return { from: [seg.fromLat, seg.fromLng], to: [seg.toLat, seg.toLng] };
+  const ok = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0);
+
+  let fromLat = seg.fromLat;
+  let fromLng = seg.fromLng;
+  let toLat = seg.toLat;
+  let toLng = seg.toLng;
+
+  if (!ok(fromLat, fromLng) && idx > 0) {
+    const prev = segments[idx - 1];
+    if (ok(prev.toLat, prev.toLng)) { fromLat = prev.toLat; fromLng = prev.toLng; }
+  }
+  if (!ok(fromLat, fromLng)) { fromLat = leg.fromLat; fromLng = leg.fromLng; }
+
+  if (!ok(toLat, toLng) && idx < segments.length - 1) {
+    const next = segments[idx + 1];
+    if (ok(next.fromLat, next.fromLng)) { toLat = next.fromLat; toLng = next.fromLng; }
+  }
+  if (!ok(toLat, toLng)) { toLat = leg.toLat; toLng = leg.toLng; }
+
+  if (ok(fromLat, fromLng) && ok(toLat, toLng)) {
+    return { from: [fromLat, fromLng], to: [toLat, toLng] };
   }
 
   const legFrom = [leg.fromLat, leg.fromLng];
@@ -158,6 +177,8 @@ function drawSegmentLine(points, color, mode, popup) {
   state.routeLayer.addLayer(line);
   return line;
 }
+
+function legPopupHtml(leg, idx) {
   const d = leg.decision;
   const mode = d ? d.chosenMode : "—";
   const segs = d && d.segments && d.segments.length
@@ -195,17 +216,23 @@ function markerIcon(kind, num, color) {
   });
 }
 
-function renderRouteMap(itin) {
+async function renderRouteMap(itin) {
   initRouteMap();
   state.routeLayer.clearLayers();
 
   const legs = (itin.legs || []).filter(legHasCoords);
-  $("#mapSub").textContent = legs.length
-    ? `${legs.length} leg${legs.length === 1 ? "" : "s"} · click a route for details`
-    : "no coordinates for this day";
-
   const legend = $("#mapLegend");
   legend.innerHTML = "";
+
+  let segmentCount = 0;
+  for (const leg of legs) {
+    const segs = leg.decision?.segments;
+    segmentCount += segs?.length ? segs.length : 1;
+  }
+
+  $("#mapSub").textContent = legs.length
+    ? `${legs.length} leg${legs.length === 1 ? "" : "s"} · ${segmentCount} segment${segmentCount === 1 ? "" : "s"} · click for details`
+    : "no coordinates for this day";
 
   if (legs.length === 0) {
     state.routeMap.setView(LONDON, 11);
@@ -216,51 +243,90 @@ function renderRouteMap(itin) {
   const bounds = L.latLngBounds([]);
   const markerKeys = new Set();
 
-  legs.forEach((leg, i) => {
-    const from = [leg.fromLat, leg.fromLng];
-    const to = [leg.toLat, leg.toLng];
-    const mode = leg.decision ? leg.decision.chosenMode : null;
-    const color = modeColor(mode, i);
-    const popup = legPopupHtml(leg, i);
-    const dash = mode === "walk" || mode === "cycle" ? "8 10" : null;
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i];
+    const segments = leg.decision?.segments?.length ? leg.decision.segments : null;
 
-    const line = L.polyline([from, to], {
-      color, weight: 5, opacity: 0.88, dashArray: dash,
-    }).bindPopup(popup, { className: "dark-popup" });
-    state.routeLayer.addLayer(line);
+    if (segments?.length) {
+      for (let si = 0; si < segments.length; si++) {
+        const seg = segments[si];
+        const color = modeColor(seg.mode, seg.order ?? si);
+        const { from, to } = resolveSegmentEndpoints(leg, segments, si);
+        const points = await segmentPolylinePoints(from, to, seg.mode);
+        const popup = segmentPopupHtml(seg, i);
+        drawSegmentLine(points, color, seg.mode, popup);
 
-    const mid = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
-    L.circleMarker(mid, { radius: 0, opacity: 0, fillOpacity: 0 })
-      .bindPopup(popup, { className: "dark-popup" })
-      .addTo(state.routeLayer);
+        for (const pt of points) bounds.extend(pt);
 
-    for (const [lat, lng, label, kind] of [
-      [from[0], from[1], leg.fromLabel, "origin"],
-      [to[0], to[1], leg.toLabel, "dest"],
-    ]) {
-      const key = `${lat.toFixed(5)}:${lng.toFixed(5)}:${kind}`;
-      if (markerKeys.has(key)) continue;
-      markerKeys.add(key);
-      L.marker([lat, lng], { icon: markerIcon(kind, i + 1, color) })
-        .bindPopup(`<div class="map-popup"><div class="map-popup-title">${label || kind}</div><div class="map-popup-row"><span>Leg</span><b>${i + 1}</b></div></div>`, { className: "dark-popup" })
-        .addTo(state.routeLayer);
+        for (const [lat, lng, label] of [
+          [from[0], from[1], seg.fromLabel],
+          [to[0], to[1], seg.toLabel],
+        ]) {
+          const key = `${lat.toFixed(5)}:${lng.toFixed(5)}`;
+          if (markerKeys.has(key)) continue;
+          markerKeys.add(key);
+          L.circleMarker([lat, lng], {
+            radius: 4, color, fillColor: color, fillOpacity: 0.85, weight: 2,
+          }).bindPopup(`<div class="map-popup"><div class="map-popup-title">${label || "Stop"}</div></div>`, { className: "dark-popup" })
+            .addTo(state.routeLayer);
+        }
+
+        legend.appendChild(el(
+          `<span class="legend-item" title="${seg.fromLabel || ""} → ${seg.toLabel || ""}">
+            <span class="legend-swatch" style="background:${color}"></span>
+            ${seg.mode} ${seg.durationMin}m
+          </span>`
+        ));
+      }
+
+      const legColor = modeColor(leg.decision.chosenMode, i);
+      for (const [lat, lng, label, kind] of [
+        [leg.fromLat, leg.fromLng, leg.fromLabel, "origin"],
+        [leg.toLat, leg.toLng, leg.toLabel, "dest"],
+      ]) {
+        const key = `${lat.toFixed(5)}:${lng.toFixed(5)}:${kind}`;
+        if (markerKeys.has(key)) continue;
+        markerKeys.add(key);
+        L.marker([lat, lng], { icon: markerIcon(kind, i + 1, legColor) })
+          .bindPopup(`<div class="map-popup"><div class="map-popup-title">${label || kind}</div><div class="map-popup-row"><span>Leg</span><b>${i + 1}</b></div></div>`, { className: "dark-popup" })
+          .addTo(state.routeLayer);
+      }
+    } else {
+      const from = [leg.fromLat, leg.fromLng];
+      const to = [leg.toLat, leg.toLng];
+      const mode = leg.decision ? leg.decision.chosenMode : null;
+      const color = modeColor(mode, i);
+      const popup = legPopupHtml(leg, i);
+      const points = await segmentPolylinePoints(from, to, mode || "mixed");
+      drawSegmentLine(points, color, mode || "mixed", popup);
+
+      for (const pt of points) bounds.extend(pt);
+
+      for (const [lat, lng, label, kind] of [
+        [from[0], from[1], leg.fromLabel, "origin"],
+        [to[0], to[1], leg.toLabel, "dest"],
+      ]) {
+        const key = `${lat.toFixed(5)}:${lng.toFixed(5)}:${kind}`;
+        if (markerKeys.has(key)) continue;
+        markerKeys.add(key);
+        L.marker([lat, lng], { icon: markerIcon(kind, i + 1, color) })
+          .bindPopup(`<div class="map-popup"><div class="map-popup-title">${label || kind}</div><div class="map-popup-row"><span>Leg</span><b>${i + 1}</b></div></div>`, { className: "dark-popup" })
+          .addTo(state.routeLayer);
+      }
+
+      legend.appendChild(el(`<span class="legend-item"><span class="legend-swatch" style="background:${color}"></span>${leg.fromLabel || "?"} → ${leg.toLabel || "?"} · ${mode || "—"}</span>`));
     }
-
-    bounds.extend(from);
-    bounds.extend(to);
-
-    legend.appendChild(el(`<span class="legend-item"><span class="legend-swatch" style="background:${color}"></span>${leg.fromLabel || "?"} → ${leg.toLabel || "?"} · ${mode || "—"}</span>`));
-  });
+  }
 
   state.routeMap.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 });
   setTimeout(() => state.routeMap.invalidateSize(), 80);
 }
 
 /* ---------------- Timeline ---------------- */
-function renderTimeline(itin) {
+async function renderTimeline(itin) {
   const wrap = $("#timeline");
   $("#timelineSub").textContent = itin.date + (itin.legs.length ? ` · ${itin.totalPredictedWastedMin} min wasted` : "");
-  renderRouteMap(itin);
+  await renderRouteMap(itin);
   if (!itin.legs || itin.legs.length === 0) {
     wrap.innerHTML = `<div class="empty">No legs planned for this day.<br/>Pick another day or wait for the optimizer to build the itinerary.</div>`;
     return;
@@ -276,15 +342,18 @@ function renderLeg(leg) {
 
   let segHtml = "";
   if (segs.length > 0) {
-    segHtml = `<div class="segments">` + segs.map((s, i) => `
-      ${i > 0 ? '<span class="seg-conn"></span>' : ""}
+    segHtml = `<div class="segments">` + segs.map((s, i) => {
+      const color = modeColor(s.mode, s.order ?? i);
+      return `
+      ${i > 0 ? `<span class="seg-conn" style="background:${color}"></span>` : ""}
       <div class="seg">
-        <div class="seg-chip" title="${(s.summary || "").replace(/"/g, "")}">
+        <div class="seg-chip" style="--seg-color:${color}; border-color:${color}55" title="${(s.summary || "").replace(/"/g, "")}">
           ${modeIcon(s.mode)}
-          <span class="seg-mode">${s.mode}</span>
+          <span class="seg-mode" style="color:${color}">${s.mode}</span>
           <span class="seg-min">${s.durationMin}m</span>
         </div>
-      </div>`).join("") + `</div>`;
+      </div>`;
+    }).join("") + `</div>`;
   } else if (chosenMode) {
     segHtml = `<div class="segments"><div class="seg"><div class="seg-chip">
       ${modeIcon(chosenMode)}<span class="seg-mode">${chosenMode}</span></div></div></div>`;
@@ -418,7 +487,7 @@ function drawHourChart(samples) {
   const order = ["night", "am_peak", "midday", "pm_peak", "evening"];
   const label = { night: "Night", am_peak: "AM peak", midday: "Midday", pm_peak: "PM peak", evening: "Evening" };
   const modes = [...new Set(samples.map((s) => s.mode))];
-  const palette = { walk: "#4ade80", tube: "#5b9dff", bus: "#f87171", rail: "#a78bfa", cycle: "#2dd4bf", mixed: "#fbbf24", overground: "#fb923c", dlr: "#22d3ee" };
+  const palette = { walk: "#22c55e", tube: "#3b82f6", bus: "#f59e0b", rail: "#8b5cf6", cycle: "#06b6d4", mixed: "#94a3b8", overground: "#8b5cf6", dlr: "#8b5cf6" };
 
   const datasets = modes.map((m) => {
     const data = order.map((b) => {

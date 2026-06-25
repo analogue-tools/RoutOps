@@ -295,6 +295,12 @@ namespace TravelOptimizer.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<double?>("FromLat")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("FromLng")
+                        .HasColumnType("double precision");
+
                     b.Property<string>("Mode")
                         .IsRequired()
                         .HasColumnType("text");
@@ -309,6 +315,12 @@ namespace TravelOptimizer.Persistence.Migrations
                     b.Property<string>("ToLabel")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<double?>("ToLat")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("ToLng")
+                        .HasColumnType("double precision");
 
                     b.Property<int>("TravelPredictionId")
                         .HasColumnType("integer");
